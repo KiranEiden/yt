@@ -736,7 +736,9 @@ class StreamlineCallback(PlotCallback):
     from the associated data, skipping every *factor* datapoints like
     'quiver'. *density* is the index of the amount of the streamlines.
     *field_color* is a field to be used to colormap the streamlines.
-    If *display_threshold* is supplied, any streamline segments where
+    *add_colorbar* controls whether a second colorbar will be added
+    to plot showing the colormap for the streamlines. If
+    *display_threshold* is supplied, any streamline segments where
     *field_color* is less than the threshold will be removed by having
     their line width set to 0.
     """
@@ -744,7 +746,7 @@ class StreamlineCallback(PlotCallback):
     _supported_geometries = ("cartesian", "spectral_cube", "cylindrical-2d")
     def __init__(self, field_x, field_y, factor=16,
                  density=1, field_color=None,
-                 display_threshold=None,
+                 add_colorbar=False, display_threshold=None,
                  plot_args=None):
         PlotCallback.__init__(self)
         def_plot_args = {}
@@ -754,6 +756,7 @@ class StreamlineCallback(PlotCallback):
         self.factor = factor
         self.dens = density
         self.display_threshold = display_threshold
+        self.add_colorbar = add_colorbar
         if plot_args is None: plot_args = def_plot_args
         self.plot_args = plot_args
 
@@ -811,7 +814,37 @@ class StreamlineCallback(PlotCallback):
         streamplot_args = {'x': X, 'y': Y, 'u':pixX, 'v': pixY,
                            'density': self.dens, 'color':field_colors}
         streamplot_args.update(self.plot_args)
-        plot._axes.streamplot(**streamplot_args)
+        strm = plot._axes.streamplot(**streamplot_args)
+
+        if self.add_colorbar and self.field_color:
+
+            import matplotlib.colorbar as colorbar
+            from yt.units.unit_object import Unit
+            from matplotlib.mathtext import MathTextParser
+
+            aspect = 25 * (yy1 - yy0) / (xx1 - xx0)
+            cax, kw = colorbar.make_axes(plot._axes, location='right',
+                                         aspect=aspect)
+            cbar = plot._figure.colorbar(strm.lines, cax=cax, **kw)
+
+            units = Unit(plot.data[self.field_color].units,
+                         registry=plot.ds.unit_registry)
+            units = units.latex_representation()
+            label = self.field_color.capitalize() + \
+                    r'$\ \ \left(' + units + r'\right)$'
+            parser = MathTextParser('Agg')
+            parser.parse(label)
+            cbar.set_label(label)
+
+            yax = cbar.ax.yaxis
+            labels = yax.get_ticklabels()
+            labels += yax.get_minorticklabels()
+            labels += [yax.label, yax.get_offset_text()]
+
+            for label in labels:
+                label.set_fontproperties(plot.font_properties)
+                if plot.font_color: label.set_color(plot.font_color)
+
         plot._axes.set_xlim(xx0,xx1)
         plot._axes.set_ylim(yy0,yy1)
 
